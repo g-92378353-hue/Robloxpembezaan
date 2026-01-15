@@ -1,0 +1,520 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Terminal, 
+  Cpu, 
+  AlertTriangle, 
+  CheckCircle2, 
+  Trophy, 
+  BookOpen, 
+  RefreshCcw, 
+  ShieldAlert, 
+  Zap, 
+  User, 
+  ChevronRight 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+
+// --- Math Formulas & Questions Data ---
+// Using quadruple backslashes for LaTeX commands inside template literals 
+// or single quotes for raw string representation to avoid JS escape sequence errors (\f, \n, etc.)
+
+const QUESTION_BANK = [
+  {
+    id: 1,
+    topic: "Power Rule",
+    question: "Beza d/dx bagi 4x^5:",
+    latex: "4x^5",
+    options: ["20x^4", "4x^4", "20x^5", "9x^4"],
+    answer: "20x^4",
+    hint: "\\\\frac{d}{dx}(ax^n) = anx^{n-1}"
+  },
+  {
+    id: 2,
+    topic: "Sum/Difference",
+    question: "Beza d/dx bagi 3x^2 + 2x - 5:",
+    latex: "3x^2 + 2x - 5",
+    options: ["6x + 2", "3x + 2", "6x", "5x - 5"],
+    answer: "6x + 2",
+    hint: "Differentiate each term separately."
+  },
+  {
+    id: 3,
+    topic: "1.1.1 Product Rule",
+    question: "Cari terbitan pertama bagi y = (x^2)(3x + 1):",
+    latex: "(x^2)(3x + 1)",
+    options: ["9x^2 + 2x", "6x^2 + 2x", "3x^2 + 2x", "9x^2 + x"],
+    answer: "9x^2 + 2x",
+    hint: "u v' + v u'"
+  },
+  {
+    id: 4,
+    topic: "1.1.2 Quotient Rule",
+    question: "Beza bagi y = \\\\frac{2x}{x+1}:",
+    latex: "\\\\frac{2x}{x+1}",
+    options: ["\\\\frac{2}{(x+1)^2}", "\\\\frac{4x}{(x+1)^2}", "\\\\frac{2x^2}{(x+1)^2}", "2"],
+    answer: "\\\\frac{2}{(x+1)^2}",
+    hint: "\\\\frac{v u' - u v'}{v^2}"
+  },
+  {
+    id: 5,
+    topic: "1.1.3 Chain Rule",
+    question: "Cari dy/dx bagi y = (2x + 3)^4:",
+    latex: "(2x + 3)^4",
+    options: ["8(2x+3)^3", "4(2x+3)^3", "2(2x+3)^3", "8x(2x+3)^3"],
+    answer: "8(2x+3)^3",
+    hint: "Differentiate outer then inner."
+  },
+  {
+    id: 6,
+    topic: "Power Rule",
+    question: "Beza bagi y = -3x^{-2}:",
+    latex: "-3x^{-2}",
+    options: ["6x^{-3}", "-6x^{-3}", "6x^{-1}", "5x^{-3}"],
+    answer: "6x^{-3}",
+    hint: "n can be negative."
+  },
+  {
+    id: 7,
+    topic: "1.1.1 Product Rule",
+    question: "Hasil darab: y = (x+1)(x-1):",
+    latex: "(x+1)(x-1)",
+    options: ["2x", "x^2", "1", "2x - 1"],
+    answer: "2x",
+    hint: "Simplify first or use Product Rule."
+  },
+  {
+    id: 8,
+    topic: "1.1.3 Chain Rule",
+    question: "Gubahan: y = \\\\sqrt{3x^2 - 1}:",
+    latex: "(3x^2 - 1)^{1/2}",
+    options: ["\\\\frac{3x}{\\\\sqrt{3x^2-1}}", "\\\\frac{1}{2\\\\sqrt{3x^2-1}}", "6x", "\\\\frac{6x}{\\\\sqrt{3x^2-1}}"],
+    answer: "\\\\frac{3x}{\\\\sqrt{3x^2-1}}",
+    hint: "Chain rule for powers."
+  },
+  {
+    id: 9,
+    topic: "1.1.2 Quotient Rule",
+    question: "Hasil bahagi: y = \\\\frac{1}{x^2}:",
+    latex: "x^{-2}",
+    options: ["-2/x^3", "2/x^3", "-2/x", "1/2x"],
+    answer: "-2/x^3",
+    hint: "Power rule or Quotient rule."
+  },
+  {
+    id: 10,
+    topic: "Complex Mix",
+    question: "Fix critical file: Beza bagi y = x(x+1)^2:",
+    latex: "x(x+1)^2",
+    options: ["(x+1)(3x+1)", "(x+1)^2", "2x(x+1)", "3x^2+1"],
+    answer: "(x+1)(3x+1)",
+    hint: "Product + Chain Rule combination."
+  }
+];
+
+// --- Components ---
+
+const ProgressBar = ({ current, total }) => {
+  const progress = (current / total) * 100;
+  return (
+    <div className="w-full h-4 bg-gray-900 border border-purple-500/30 rounded-full overflow-hidden mb-6">
+      <motion.div 
+        initial={{ width: 0 }}
+        animate={{ width: `${progress}%` }}
+        className="h-full bg-gradient-to-r from-purple-500 to-green-400"
+      />
+    </div>
+  );
+};
+
+export default function App() {
+  const [view, setView] = useState('landing'); 
+  const [engineerName, setEngineerName] = useState('');
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [isGlitching, setIsGlitching] = useState(false);
+  const [showCheatSheet, setShowCheatSheet] = useState(false);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [feedback, setFeedback] = useState(null); 
+
+  useEffect(() => {
+    const saved = localStorage.getItem('calculus_archive_leaderboard');
+    if (saved) setLeaderboard(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    let timer;
+    if (view === 'playing' && timeLeft > 0 && !feedback) {
+      timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+    } else if (timeLeft === 0 && view === 'playing') {
+      handleAnswer(null); 
+    }
+    return () => clearInterval(timer);
+  }, [view, timeLeft, feedback]);
+
+  const handleStartGame = (e) => {
+    e.preventDefault();
+    if (!engineerName.trim()) return;
+    setView('playing');
+    setCurrentIdx(0);
+    setScore(0);
+    setTimeLeft(30);
+  };
+
+  const handleAnswer = (selected) => {
+    const q = QUESTION_BANK[currentIdx];
+    const correct = selected === q.answer;
+
+    if (correct) {
+      setFeedback('correct');
+      const bonus = Math.floor(timeLeft * 2);
+      setScore(prev => prev + 100 + bonus);
+    } else {
+      setFeedback('wrong');
+      setIsGlitching(true);
+      setScore(prev => Math.max(0, prev - 20));
+      setTimeout(() => setIsGlitching(false), 500);
+    }
+
+    setTimeout(() => {
+      setFeedback(null);
+      if (currentIdx + 1 < QUESTION_BANK.length) {
+        setCurrentIdx(prev => prev + 1);
+        setTimeLeft(30);
+      } else {
+        finishGame();
+      }
+    }, 1200);
+  };
+
+  const finishGame = () => {
+    const newEntry = { name: engineerName, score: score, date: new Date().toLocaleDateString() };
+    const updatedLeaderboard = [...leaderboard, newEntry]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+    
+    setLeaderboard(updatedLeaderboard);
+    localStorage.setItem('calculus_archive_leaderboard', JSON.stringify(updatedLeaderboard));
+    setView('results');
+  };
+
+  const resetGame = () => {
+    setView('landing');
+    setEngineerName('');
+    setScore(0);
+    setCurrentIdx(0);
+  };
+
+  return (
+    <div className={`min-h-screen bg-[#0a0a0a] text-green-400 font-mono flex flex-col items-center justify-center p-4 overflow-hidden transition-colors duration-300 ${isGlitching ? 'bg-red-900/20' : ''}`}>
+      
+      <div className="fixed inset-0 pointer-events-none opacity-10" 
+           style={{ backgroundImage: 'linear-gradient(rgba(18, 255, 18, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(18, 255, 18, 0.1) 1px, transparent 1px)', backgroundSize: '30px 30px' }} 
+      />
+
+      <AnimatePresence mode="wait">
+        
+        {view === 'landing' && (
+          <motion.div 
+            key="landing"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="max-w-md w-full border-2 border-green-500 p-8 bg-black/80 shadow-[0_0_20px_rgba(34,197,94,0.3)] rounded-lg relative"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <Terminal className="text-green-500 animate-pulse" size={32} />
+              <h1 className="text-2xl font-bold tracking-tighter uppercase">
+                Calculus <span className="text-purple-500">Archive</span>
+              </h1>
+            </div>
+
+            <p className="text-xs text-green-600 mb-8 leading-relaxed border-l-2 border-green-900 pl-4">
+              [SYSTEM STATUS: CORRUPTED]<br/>
+              Files 1.1.1 - 1.1.6 are fragmenting. <br/>
+              Authorization required to perform kernel repair via Differentiation logic.
+            </p>
+
+            <form onSubmit={handleStartGame} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase text-green-700 font-bold">Engineer Identification</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 text-green-900" size={18} />
+                  <input 
+                    type="text" 
+                    value={engineerName}
+                    onChange={(e) => setEngineerName(e.target.value)}
+                    placeholder="Enter Name..."
+                    className="w-full bg-black border-b border-green-800 p-3 pl-10 focus:outline-none focus:border-green-400 text-green-400 uppercase tracking-widest text-sm"
+                    required
+                  />
+                </div>
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full group relative overflow-hidden bg-green-500 text-black font-black py-4 uppercase tracking-tighter hover:bg-green-400 transition-all"
+              >
+                <span className="relative z-10 flex items-center justify-center gap-2">
+                  Initialize Repair Sequence <ChevronRight size={18} />
+                </span>
+                <motion.div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
+              </button>
+            </form>
+
+            {leaderboard.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-green-900">
+                <h3 className="text-[10px] text-green-700 uppercase mb-3 flex items-center gap-2">
+                   <Trophy size={12} /> Top Rank Engineers
+                </h3>
+                {leaderboard.slice(0, 3).map((entry, i) => (
+                  <div key={i} className="flex justify-between text-xs py-1 opacity-70">
+                    <span>{i + 1}. {entry.name}</span>
+                    <span className="text-purple-400">{entry.score} PTS</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {view === 'playing' && (
+          <motion.div 
+            key="game"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="max-w-2xl w-full flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-end mb-2">
+              <div className="space-y-1">
+                <div className="text-[10px] text-green-700 uppercase">Archive Integrity</div>
+                <div className="text-xl font-bold flex items-center gap-2">
+                  File {currentIdx + 1} / {QUESTION_BANK.length}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] text-green-700 uppercase">Sync Points</div>
+                <div className="text-2xl font-black text-purple-400 tabular-nums">
+                  {score.toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            <ProgressBar current={currentIdx} total={QUESTION_BANK.length} />
+
+            <div className={`relative border-2 ${feedback === 'correct' ? 'border-green-400 shadow-[0_0_20px_rgba(34,197,94,0.2)]' : feedback === 'wrong' ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.2)]' : 'border-purple-500/50'} bg-black p-6 md:p-10 rounded-xl transition-all`}>
+              
+              <AnimatePresence>
+                {feedback && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className={`absolute inset-0 z-20 flex items-center justify-center backdrop-blur-sm rounded-xl ${feedback === 'correct' ? 'bg-green-500/10' : 'bg-red-500/10'}`}
+                  >
+                    {feedback === 'correct' ? (
+                      <div className="text-center text-green-400">
+                        <CheckCircle2 size={64} className="mx-auto mb-2" />
+                        <div className="text-2xl font-bold uppercase italic">Sector Repaired</div>
+                        <div className="text-sm">+100 PTS + {timeLeft * 2} Bonus</div>
+                      </div>
+                    ) : (
+                      <div className="text-center text-red-500">
+                        <AlertTriangle size={64} className="mx-auto mb-2" />
+                        <div className="text-2xl font-bold uppercase italic">Glitch Detected</div>
+                        <div className="text-sm">-20 Points Penalty</div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-6">
+                <div className="flex justify-between items-start">
+                  <span className="bg-purple-900/50 text-purple-300 text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-purple-500/30">
+                    {QUESTION_BANK[currentIdx].topic}
+                  </span>
+                  <div className={`flex items-center gap-2 text-lg font-bold ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-green-500'}`}>
+                    <Zap size={18} /> {timeLeft}s
+                  </div>
+                </div>
+
+                <h2 className="text-lg md:text-xl text-green-100 font-medium">
+                  {QUESTION_BANK[currentIdx].question}
+                </h2>
+
+                <div className="bg-gray-900/50 border border-green-900/50 p-6 rounded-lg text-center">
+                  <div className="text-3xl md:text-4xl text-green-400 font-serif italic tracking-wide">
+                    {QUESTION_BANK[currentIdx].latex}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {QUESTION_BANK[currentIdx].options.map((opt, i) => (
+                    <button
+                      key={i}
+                      onClick={() => !feedback && handleAnswer(opt)}
+                      disabled={!!feedback}
+                      className="text-left p-4 border border-green-900 bg-black hover:border-green-400 hover:bg-green-400/10 transition-all flex items-center gap-3 group disabled:opacity-50"
+                    >
+                      <span className="w-6 h-6 flex items-center justify-center bg-green-900/30 text-green-500 text-[10px] group-hover:bg-green-500 group-hover:text-black">
+                        {String.fromCharCode(65 + i)}
+                      </span>
+                      <span className="text-sm text-green-200">{opt}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center gap-4 mt-4">
+              <button 
+                onClick={() => setShowCheatSheet(true)}
+                className="flex items-center gap-2 text-[10px] uppercase text-purple-400 border border-purple-900/50 px-4 py-2 hover:bg-purple-900/20"
+              >
+                <BookOpen size={14} /> Open Cheat Sheet
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {view === 'results' && (
+          <motion.div 
+            key="results"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="max-w-lg w-full text-center space-y-8"
+          >
+            <div className="relative inline-block">
+              <Trophy size={100} className="text-yellow-500 mx-auto" />
+              <motion.div 
+                animate={{ scale: [1, 1.2, 1] }} 
+                transition={{ repeat: Infinity, duration: 2 }}
+                className="absolute inset-0 bg-yellow-500/20 blur-3xl -z-10 rounded-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <h1 className="text-4xl font-black uppercase tracking-tighter">System Restored</h1>
+              <p className="text-green-700 text-sm">ARCHIVE FILE REPAIR: 100% COMPLETE</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-black border border-green-900 p-4 rounded-lg">
+                <div className="text-[10px] text-green-700 uppercase">Engineer</div>
+                <div className="text-xl font-bold truncate">{engineerName}</div>
+              </div>
+              <div className="bg-black border border-purple-900 p-4 rounded-lg">
+                <div className="text-[10px] text-purple-700 uppercase">Final Score</div>
+                <div className="text-xl font-bold text-purple-400">{score.toLocaleString()}</div>
+              </div>
+            </div>
+
+            <div className="bg-black/50 border border-green-900/30 p-6 rounded-xl">
+              <h3 className="text-sm font-bold uppercase mb-4 flex items-center gap-2 justify-center">
+                <ShieldAlert size={16} className="text-purple-500" /> Hall of Elite Engineers
+              </h3>
+              <div className="space-y-2">
+                {leaderboard.map((entry, i) => (
+                  <div key={i} className={`flex justify-between items-center p-2 rounded ${entry.name === engineerName ? 'bg-purple-900/20 border border-purple-500/50' : ''}`}>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-green-800 font-bold w-4">#{i+1}</span>
+                      <span className="uppercase tracking-widest">{entry.name}</span>
+                    </div>
+                    <span className="text-purple-400 font-bold tabular-nums">{entry.score}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button 
+              onClick={resetGame}
+              className="w-full bg-green-500 text-black font-black py-4 uppercase tracking-tighter hover:bg-green-400 transition-all flex items-center justify-center gap-2"
+            >
+              <RefreshCcw size={18} /> Start New Repair Session
+            </button>
+          </motion.div>
+        )}
+
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCheatSheet && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-md bg-black/80"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="max-w-md w-full bg-[#0d0d0d] border-2 border-purple-500 p-6 rounded-2xl shadow-[0_0_50px_rgba(168,85,247,0.2)]"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-bold text-purple-400 uppercase tracking-tighter flex items-center gap-2">
+                  <BookOpen size={20} /> Field Manual 1.1.x
+                </h2>
+                <button onClick={() => setShowCheatSheet(false)} className="text-green-500 hover:text-white">
+                  [ESC]
+                </button>
+              </div>
+
+              <div className="space-y-6 text-sm text-green-200 overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar">
+                <div className="space-y-2">
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">Basic Power Rule</p>
+                  <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(ax^n) = anx^{n-1}$'}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.1 Product Rule</p>
+                  <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(uv) = u\\frac{dv}{dx} + v\\frac{du}{dx}$'}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.2 Quotient Rule</p>
+                  <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(\\frac{u}{v}) = \\frac{v\\frac{du}{dx} - u\\frac{dv}{dx}}{v^2}$'}</p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.3 Chain Rule</p>
+                  <p className="font-mono bg-black p-2 rounded">{'$\\frac{dy}{dx} = \\frac{dy}{du} \\times \\frac{du}{dx}$'}</p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowCheatSheet(false)}
+                className="w-full mt-8 border border-green-500 text-green-500 py-3 uppercase text-xs font-bold hover:bg-green-500 hover:text-black transition-all"
+              >
+                Close Manual
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+        
+        body {
+          font-family: 'Space Mono', monospace;
+          background: #0a0a0a;
+          color: #22c55e;
+          margin: 0;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #000;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #333;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #555;
+        }
+      ` }} />
+
+    </div>
+  );
+}
