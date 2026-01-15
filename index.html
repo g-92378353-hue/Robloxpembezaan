@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Terminal, 
   Cpu, 
@@ -10,19 +10,81 @@ import {
   ShieldAlert, 
   Zap, 
   User, 
-  ChevronRight 
+  ChevronRight,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- Math Formulas & Questions Data ---
-// Using quadruple backslashes for LaTeX commands inside template literals 
-// or single quotes for raw string representation to avoid JS escape sequence errors (\f, \n, etc.)
+/**
+ * ENJIN AUDIO RETRO (Web Audio API)
+ * Menjana bunyi synth 8-bit secara dinamik tanpa fail audio luaran.
+ */
+const playSound = (type, isMuted) => {
+  if (isMuted) return;
+  
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
 
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  const now = ctx.currentTime;
+
+  switch (type) {
+    case 'start':
+      // Bunyi Power Up - Frekuensi menaik
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.exponentialRampToValueAtTime(600, now + 0.3);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+      break;
+    case 'correct':
+      // Bunyi Kejayaan - Arpeggio pendek
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+      break;
+    case 'wrong':
+      // Bunyi Ralat - Frekuensi rendah/kasar
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(110, now);
+      osc.frequency.linearRampToValueAtTime(40, now + 0.4);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+      osc.start(now);
+      osc.stop(now + 0.4);
+      break;
+    case 'click':
+      // Bunyi Klik - Tajam dan pendek
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(800, now);
+      gain.gain.setValueAtTime(0.05, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+      osc.start(now);
+      osc.stop(now + 0.05);
+      break;
+    default:
+      break;
+  }
+};
+
+// --- BANK SOALAN (Sukatan Pelajaran 1.1.1 - 1.1.6) ---
 const QUESTION_BANK = [
   {
     id: 1,
-    topic: "Power Rule",
-    question: "Beza d/dx bagi 4x^5:",
+    topic: "Petua Kuasa",
+    question: "Tentukan terbitan pertama bagi y = 4x^5:",
     latex: "4x^5",
     options: ["20x^4", "4x^4", "20x^5", "9x^4"],
     answer: "20x^4",
@@ -30,26 +92,26 @@ const QUESTION_BANK = [
   },
   {
     id: 2,
-    topic: "Sum/Difference",
-    question: "Beza d/dx bagi 3x^2 + 2x - 5:",
+    topic: "Hasil Tambah/Beza",
+    question: "Cari dy/dx bagi y = 3x^2 + 2x - 5:",
     latex: "3x^2 + 2x - 5",
     options: ["6x + 2", "3x + 2", "6x", "5x - 5"],
     answer: "6x + 2",
-    hint: "Differentiate each term separately."
+    hint: "Bezakan setiap sebutan secara berasingan."
   },
   {
     id: 3,
-    topic: "1.1.1 Product Rule",
-    question: "Cari terbitan pertama bagi y = (x^2)(3x + 1):",
+    topic: "1.1.1 Petua Hasil Darab",
+    question: "Bezakan y = (x^2)(3x + 1) terhadap x:",
     latex: "(x^2)(3x + 1)",
     options: ["9x^2 + 2x", "6x^2 + 2x", "3x^2 + 2x", "9x^2 + x"],
     answer: "9x^2 + 2x",
-    hint: "u v' + v u'"
+    hint: "Gunakan u v' + v u'"
   },
   {
     id: 4,
-    topic: "1.1.2 Quotient Rule",
-    question: "Beza bagi y = \\\\frac{2x}{x+1}:",
+    topic: "1.1.2 Petua Hasil Bahagi",
+    question: "Tentukan dy/dx bagi y = \\\\frac{2x}{x+1}:",
     latex: "\\\\frac{2x}{x+1}",
     options: ["\\\\frac{2}{(x+1)^2}", "\\\\frac{4x}{(x+1)^2}", "\\\\frac{2x^2}{(x+1)^2}", "2"],
     answer: "\\\\frac{2}{(x+1)^2}",
@@ -57,61 +119,61 @@ const QUESTION_BANK = [
   },
   {
     id: 5,
-    topic: "1.1.3 Chain Rule",
-    question: "Cari dy/dx bagi y = (2x + 3)^4:",
+    topic: "1.1.3 Petua Rantai",
+    question: "Cari terbitan pertama bagi y = (2x + 3)^4:",
     latex: "(2x + 3)^4",
     options: ["8(2x+3)^3", "4(2x+3)^3", "2(2x+3)^3", "8x(2x+3)^3"],
     answer: "8(2x+3)^3",
-    hint: "Differentiate outer then inner."
+    hint: "Bezakan fungsi luar, kemudian fungsi dalam."
   },
   {
     id: 6,
-    topic: "Power Rule",
-    question: "Beza bagi y = -3x^{-2}:",
+    topic: "Petua Kuasa (Negatif)",
+    question: "Cari dy/dx bagi y = -3x^{-2}:",
     latex: "-3x^{-2}",
     options: ["6x^{-3}", "-6x^{-3}", "6x^{-1}", "5x^{-3}"],
     answer: "6x^{-3}",
-    hint: "n can be negative."
+    hint: "Kuasa n boleh jadi negatif."
   },
   {
     id: 7,
-    topic: "1.1.1 Product Rule",
-    question: "Hasil darab: y = (x+1)(x-1):",
+    topic: "1.1.1 Petua Hasil Darab",
+    question: "Bezakan y = (x+1)(x-1):",
     latex: "(x+1)(x-1)",
     options: ["2x", "x^2", "1", "2x - 1"],
     answer: "2x",
-    hint: "Simplify first or use Product Rule."
+    hint: "Kembangkan dahulu atau guna Petua Hasil Darab."
   },
   {
     id: 8,
-    topic: "1.1.3 Chain Rule",
-    question: "Gubahan: y = \\\\sqrt{3x^2 - 1}:",
+    topic: "1.1.3 Petua Rantai",
+    question: "Bezakan y = \\\\sqrt{3x^2 - 1}:",
     latex: "(3x^2 - 1)^{1/2}",
     options: ["\\\\frac{3x}{\\\\sqrt{3x^2-1}}", "\\\\frac{1}{2\\\\sqrt{3x^2-1}}", "6x", "\\\\frac{6x}{\\\\sqrt{3x^2-1}}"],
     answer: "\\\\frac{3x}{\\\\sqrt{3x^2-1}}",
-    hint: "Chain rule for powers."
+    hint: "Gunakan petua rantai untuk punca kuasa."
   },
   {
     id: 9,
-    topic: "1.1.2 Quotient Rule",
-    question: "Hasil bahagi: y = \\\\frac{1}{x^2}:",
+    topic: "1.1.2 Petua Hasil Bahagi",
+    question: "Tentukan terbitan bagi y = \\\\frac{1}{x^2}:",
     latex: "x^{-2}",
     options: ["-2/x^3", "2/x^3", "-2/x", "1/2x"],
     answer: "-2/x^3",
-    hint: "Power rule or Quotient rule."
+    hint: "Guna Petua Kuasa atau Hasil Bahagi."
   },
   {
     id: 10,
-    topic: "Complex Mix",
-    question: "Fix critical file: Beza bagi y = x(x+1)^2:",
+    topic: "Gabungan Kritikal",
+    question: "Baiki fail sistem: Bezakan y = x(x+1)^2:",
     latex: "x(x+1)^2",
     options: ["(x+1)(3x+1)", "(x+1)^2", "2x(x+1)", "3x^2+1"],
     answer: "(x+1)(3x+1)",
-    hint: "Product + Chain Rule combination."
+    hint: "Gabungan Petua Hasil Darab + Petua Rantai."
   }
 ];
 
-// --- Components ---
+// --- KOMPONEN UI ---
 
 const ProgressBar = ({ current, total }) => {
   const progress = (current / total) * 100;
@@ -136,12 +198,15 @@ export default function App() {
   const [showCheatSheet, setShowCheatSheet] = useState(false);
   const [leaderboard, setLeaderboard] = useState([]);
   const [feedback, setFeedback] = useState(null); 
+  const [isMuted, setIsMuted] = useState(false);
 
+  // Muat turun rekod skor daripada LocalStorage
   useEffect(() => {
     const saved = localStorage.getItem('calculus_archive_leaderboard');
     if (saved) setLeaderboard(JSON.parse(saved));
   }, []);
 
+  // Logik Pemasa (Timer)
   useEffect(() => {
     let timer;
     if (view === 'playing' && timeLeft > 0 && !feedback) {
@@ -152,9 +217,16 @@ export default function App() {
     return () => clearInterval(timer);
   }, [view, timeLeft, feedback]);
 
+  const toggleMute = () => {
+    const newMuteStatus = !isMuted;
+    setIsMuted(newMuteStatus);
+    if (!newMuteStatus) playSound('click', false);
+  };
+
   const handleStartGame = (e) => {
     e.preventDefault();
     if (!engineerName.trim()) return;
+    playSound('start', isMuted);
     setView('playing');
     setCurrentIdx(0);
     setScore(0);
@@ -166,10 +238,12 @@ export default function App() {
     const correct = selected === q.answer;
 
     if (correct) {
+      playSound('correct', isMuted);
       setFeedback('correct');
       const bonus = Math.floor(timeLeft * 2);
       setScore(prev => prev + 100 + bonus);
     } else {
+      playSound('wrong', isMuted);
       setFeedback('wrong');
       setIsGlitching(true);
       setScore(prev => Math.max(0, prev - 20));
@@ -188,6 +262,7 @@ export default function App() {
   };
 
   const finishGame = () => {
+    playSound('start', isMuted);
     const newEntry = { name: engineerName, score: score, date: new Date().toLocaleDateString() };
     const updatedLeaderboard = [...leaderboard, newEntry]
       .sort((a, b) => b.score - a.score)
@@ -199,6 +274,7 @@ export default function App() {
   };
 
   const resetGame = () => {
+    playSound('click', isMuted);
     setView('landing');
     setEngineerName('');
     setScore(0);
@@ -208,12 +284,22 @@ export default function App() {
   return (
     <div className={`min-h-screen bg-[#0a0a0a] text-green-400 font-mono flex flex-col items-center justify-center p-4 overflow-hidden transition-colors duration-300 ${isGlitching ? 'bg-red-900/20' : ''}`}>
       
+      {/* Kawalan Audio */}
+      <button 
+        onClick={toggleMute}
+        className="fixed top-6 right-6 z-50 p-3 border border-green-900 bg-black/50 rounded-full hover:border-green-400 transition-all text-green-500"
+      >
+        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+      </button>
+
+      {/* Latar Belakang Grid Digital */}
       <div className="fixed inset-0 pointer-events-none opacity-10" 
            style={{ backgroundImage: 'linear-gradient(rgba(18, 255, 18, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(18, 255, 18, 0.1) 1px, transparent 1px)', backgroundSize: '30px 30px' }} 
       />
 
       <AnimatePresence mode="wait">
         
+        {/* SKRIN UTAMA (LANDING) */}
         {view === 'landing' && (
           <motion.div 
             key="landing"
@@ -230,21 +316,21 @@ export default function App() {
             </div>
 
             <p className="text-xs text-green-600 mb-8 leading-relaxed border-l-2 border-green-900 pl-4">
-              [SYSTEM STATUS: CORRUPTED]<br/>
-              Files 1.1.1 - 1.1.6 are fragmenting. <br/>
-              Authorization required to perform kernel repair via Differentiation logic.
+              [STATUS SISTEM: KRITIKAL]<br/>
+              Fail Arkib 1.1.1 - 1.1.6 sedang mengalami kerosakan data. <br/>
+              Sila masukkan identiti jurutera untuk memulakan kernel pembaikan.
             </p>
 
             <form onSubmit={handleStartGame} className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] uppercase text-green-700 font-bold">Engineer Identification</label>
+                <label className="text-[10px] uppercase text-green-700 font-bold">Identiti Jurutera (Nama)</label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 text-green-900" size={18} />
                   <input 
                     type="text" 
                     value={engineerName}
                     onChange={(e) => setEngineerName(e.target.value)}
-                    placeholder="Enter Name..."
+                    placeholder="Masukkan Nama..."
                     className="w-full bg-black border-b border-green-800 p-3 pl-10 focus:outline-none focus:border-green-400 text-green-400 uppercase tracking-widest text-sm"
                     required
                   />
@@ -253,10 +339,11 @@ export default function App() {
 
               <button 
                 type="submit"
+                onClick={() => playSound('click', isMuted)}
                 className="w-full group relative overflow-hidden bg-green-500 text-black font-black py-4 uppercase tracking-tighter hover:bg-green-400 transition-all"
               >
                 <span className="relative z-10 flex items-center justify-center gap-2">
-                  Initialize Repair Sequence <ChevronRight size={18} />
+                  Mulakan Protokol Pembaikan <ChevronRight size={18} />
                 </span>
                 <motion.div className="absolute inset-0 bg-white/20 -translate-x-full group-hover:translate-x-full transition-transform duration-500" />
               </button>
@@ -265,12 +352,12 @@ export default function App() {
             {leaderboard.length > 0 && (
               <div className="mt-8 pt-6 border-t border-green-900">
                 <h3 className="text-[10px] text-green-700 uppercase mb-3 flex items-center gap-2">
-                   <Trophy size={12} /> Top Rank Engineers
+                   <Trophy size={12} /> Senarai Jurutera Terbaik
                 </h3>
                 {leaderboard.slice(0, 3).map((entry, i) => (
                   <div key={i} className="flex justify-between text-xs py-1 opacity-70">
                     <span>{i + 1}. {entry.name}</span>
-                    <span className="text-purple-400">{entry.score} PTS</span>
+                    <span className="text-purple-400">{entry.score} MATA</span>
                   </div>
                 ))}
               </div>
@@ -278,6 +365,7 @@ export default function App() {
           </motion.div>
         )}
 
+        {/* MOD PERMAINAN (PLAYING) */}
         {view === 'playing' && (
           <motion.div 
             key="game"
@@ -287,13 +375,13 @@ export default function App() {
           >
             <div className="flex justify-between items-end mb-2">
               <div className="space-y-1">
-                <div className="text-[10px] text-green-700 uppercase">Archive Integrity</div>
+                <div className="text-[10px] text-green-700 uppercase">Integriti Arkib</div>
                 <div className="text-xl font-bold flex items-center gap-2">
-                  File {currentIdx + 1} / {QUESTION_BANK.length}
+                  Fail {currentIdx + 1} / {QUESTION_BANK.length}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] text-green-700 uppercase">Sync Points</div>
+                <div className="text-[10px] text-green-700 uppercase">Mata Segerak</div>
                 <div className="text-2xl font-black text-purple-400 tabular-nums">
                   {score.toLocaleString()}
                 </div>
@@ -315,14 +403,14 @@ export default function App() {
                     {feedback === 'correct' ? (
                       <div className="text-center text-green-400">
                         <CheckCircle2 size={64} className="mx-auto mb-2" />
-                        <div className="text-2xl font-bold uppercase italic">Sector Repaired</div>
-                        <div className="text-sm">+100 PTS + {timeLeft * 2} Bonus</div>
+                        <div className="text-2xl font-bold uppercase italic">Sektor Dibaiki</div>
+                        <div className="text-sm">+100 MATA + {timeLeft * 2} Bonus</div>
                       </div>
                     ) : (
                       <div className="text-center text-red-500">
                         <AlertTriangle size={64} className="mx-auto mb-2" />
-                        <div className="text-2xl font-bold uppercase italic">Glitch Detected</div>
-                        <div className="text-sm">-20 Points Penalty</div>
+                        <div className="text-2xl font-bold uppercase italic">Ralatikesan</div>
+                        <div className="text-sm">-20 Penalti Mata</div>
                       </div>
                     )}
                   </motion.div>
@@ -332,7 +420,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex justify-between items-start">
                   <span className="bg-purple-900/50 text-purple-300 text-[10px] px-2 py-1 rounded uppercase tracking-widest border border-purple-500/30">
-                    {QUESTION_BANK[currentIdx].topic}
+                    Topik: {QUESTION_BANK[currentIdx].topic}
                   </span>
                   <div className={`flex items-center gap-2 text-lg font-bold ${timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-green-500'}`}>
                     <Zap size={18} /> {timeLeft}s
@@ -369,15 +457,16 @@ export default function App() {
 
             <div className="flex justify-center gap-4 mt-4">
               <button 
-                onClick={() => setShowCheatSheet(true)}
-                className="flex items-center gap-2 text-[10px] uppercase text-purple-400 border border-purple-900/50 px-4 py-2 hover:bg-purple-900/20"
+                onClick={() => { setShowCheatSheet(true); playSound('click', isMuted); }}
+                className="flex items-center gap-2 text-[10px] uppercase text-purple-400 border border-purple-900/50 px-4 py-2 hover:bg-purple-900/20 transition-colors"
               >
-                <BookOpen size={14} /> Open Cheat Sheet
+                <BookOpen size={14} /> Buka Manual Formula (Cheat Sheet)
               </button>
             </div>
           </motion.div>
         )}
 
+        {/* SKRIN KEPUTUSAN (RESULTS) */}
         {view === 'results' && (
           <motion.div 
             key="results"
@@ -395,26 +484,26 @@ export default function App() {
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-4xl font-black uppercase tracking-tighter">System Restored</h1>
-              <p className="text-green-700 text-sm">ARCHIVE FILE REPAIR: 100% COMPLETE</p>
+              <h1 className="text-4xl font-black uppercase tracking-tighter text-green-400">Sistem Berjaya Dipulihkan</h1>
+              <p className="text-green-700 text-sm">INTEGRITI FAIL ARKIB: 100% SIAP</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-black border border-green-900 p-4 rounded-lg">
-                <div className="text-[10px] text-green-700 uppercase">Engineer</div>
+                <div className="text-[10px] text-green-700 uppercase">Jurutera</div>
                 <div className="text-xl font-bold truncate">{engineerName}</div>
               </div>
               <div className="bg-black border border-purple-900 p-4 rounded-lg">
-                <div className="text-[10px] text-purple-700 uppercase">Final Score</div>
+                <div className="text-[10px] text-purple-700 uppercase">Skor Akhir</div>
                 <div className="text-xl font-bold text-purple-400">{score.toLocaleString()}</div>
               </div>
             </div>
 
             <div className="bg-black/50 border border-green-900/30 p-6 rounded-xl">
               <h3 className="text-sm font-bold uppercase mb-4 flex items-center gap-2 justify-center">
-                <ShieldAlert size={16} className="text-purple-500" /> Hall of Elite Engineers
+                <ShieldAlert size={16} className="text-purple-500" /> Dewan Jurutera Elit
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-2 text-left">
                 {leaderboard.map((entry, i) => (
                   <div key={i} className={`flex justify-between items-center p-2 rounded ${entry.name === engineerName ? 'bg-purple-900/20 border border-purple-500/50' : ''}`}>
                     <div className="flex items-center gap-3 text-sm">
@@ -431,13 +520,14 @@ export default function App() {
               onClick={resetGame}
               className="w-full bg-green-500 text-black font-black py-4 uppercase tracking-tighter hover:bg-green-400 transition-all flex items-center justify-center gap-2"
             >
-              <RefreshCcw size={18} /> Start New Repair Session
+              <RefreshCcw size={18} /> Mulakan Sesi Pembaikan Baru
             </button>
           </motion.div>
         )}
 
       </AnimatePresence>
 
+      {/* MODAL MANUAL RUJUKAN */}
       <AnimatePresence>
         {showCheatSheet && (
           <motion.div 
@@ -453,28 +543,28 @@ export default function App() {
             >
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-purple-400 uppercase tracking-tighter flex items-center gap-2">
-                  <BookOpen size={20} /> Field Manual 1.1.x
+                  <BookOpen size={20} /> Manual Teknikal 1.1.x
                 </h2>
                 <button onClick={() => setShowCheatSheet(false)} className="text-green-500 hover:text-white">
-                  [ESC]
+                  [TUTUP]
                 </button>
               </div>
 
               <div className="space-y-6 text-sm text-green-200 overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar">
                 <div className="space-y-2">
-                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">Basic Power Rule</p>
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">Petua Kuasa Asas</p>
                   <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(ax^n) = anx^{n-1}$'}</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.1 Product Rule</p>
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.1 Petua Hasil Darab</p>
                   <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(uv) = u\\frac{dv}{dx} + v\\frac{du}{dx}$'}</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.2 Quotient Rule</p>
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.2 Petua Hasil Bahagi</p>
                   <p className="font-mono bg-black p-2 rounded">{'$\\frac{d}{dx}(\\frac{u}{v}) = \\frac{v\\frac{du}{dx} - u\\frac{dv}{dx}}{v^2}$'}</p>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.3 Chain Rule</p>
+                  <p className="text-purple-400 font-bold border-b border-purple-900 pb-1">1.1.3 Petua Rantai</p>
                   <p className="font-mono bg-black p-2 rounded">{'$\\frac{dy}{dx} = \\frac{dy}{du} \\times \\frac{du}{dx}$'}</p>
                 </div>
               </div>
@@ -483,7 +573,7 @@ export default function App() {
                 onClick={() => setShowCheatSheet(false)}
                 className="w-full mt-8 border border-green-500 text-green-500 py-3 uppercase text-xs font-bold hover:bg-green-500 hover:text-black transition-all"
               >
-                Close Manual
+                Kembali ke Terminal
               </button>
             </motion.div>
           </motion.div>
@@ -512,6 +602,19 @@ export default function App() {
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: #555;
+        }
+
+        /* Animasi Glitch */
+        @keyframes glitch {
+          0% { transform: translate(0) }
+          20% { transform: translate(-2px, 2px) }
+          40% { transform: translate(-2px, -2px) }
+          60% { transform: translate(2px, 2px) }
+          80% { transform: translate(2px, -2px) }
+          100% { transform: translate(0) }
+        }
+        .glitch-effect {
+          animation: glitch 0.2s infinite;
         }
       ` }} />
 
